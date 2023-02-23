@@ -1,0 +1,192 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="author" content="colorlib.com">
+    <link href="https://fonts.googleapis.com/css?family=Poppins" rel="stylesheet" />
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+    <link href="css/main.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js" integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
+    <script src="index.js"></script>
+    <script src="dashboard.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.9.3/Chart.bundle.min.js"></script>
+    <script src="https://apis.google.com/js/api.js"></script>
+  </head>
+  <body>
+    <div class="s130">
+        <form>
+            <div class="inner-form" style="max-width: 1200px;">
+                <div class="col-xl">
+                    <div id="dashboard">
+                      <h1 id="card-title"></h1>
+                      <p id="card-text"></p>
+                      <div id="blurb-dash"></div>
+                      <button class="printButton" type="button" onclick="window.print()">Save Report as PDF</button>
+                      <h3>Your Passion at a Glance</h3>
+                      <canvas id="passion-chart" width="400" height="400"></canvas>
+                    </div>
+                    <button class="printButton" type="button" onclick="window.print()">Save Report as PDF</button>
+                </div>
+            </div>
+          <div style="margin: auto; width: 50%">
+            <small>Copyright 2023 The Passion Centre Inc. All rights reserved.</small>
+          </div>
+        </form>
+    </div>
+
+    <!-- Load data of match and inject the corresponding information from the spreadsheet into the card -->
+    <script type="text/javascript">
+      // Get the uid from the URL query parameter (?uid=)
+      const urlParams = new URLSearchParams(window.location.search);
+      const uid = (urlParams.get('uid')).toString();
+      // const dbIndex = (urlParams.get('db')).toString();
+
+      var client = {}
+
+      // Number of columns in "Passion Health Responses" tab
+      var nPassionResponseDBColumns = 7
+
+      // Number of rows in "Passion Health Responses" tab
+      // Excluding "overview blurb" and top row
+      var nAreas = 16
+
+      // Number of columns in "Passion Health Test" tab
+      var nColumns = 20
+      var nNonScoreColumns = 5
+
+      // URL to google sheets
+      var sheetUrl = "sheetUrl = 'https://spreadsheets.google.com/feeds/cells/1IUmIxekkrg5uE-XXHNZpKUfSue9ntsEoDw9-imypgxU/od6/public/values?alt=json'"
+
+      function createChart(chartID, categories, client) {
+          var ctx = document.getElementById(chartID).getContext('2d');
+          const scores = getClientScores(client, nAreas)
+          scores.pop()
+
+          const chartData = {
+            labels: categories,
+            datasets: [{
+              label: "Your Actual Score",
+              fill: true,
+              backgroundColor: "rgba(5, 155, 255, 0.4)",
+              borderColor: "rgba(5, 155, 255, 1)",
+              pointBorderColor: "#fff",
+              pointBackgroundColor: "rgba(5, 155, 255, 1)",
+              data: scores
+            }, {
+              label: "Your Perceived Score",
+              fill: true,
+              backgroundColor: "rgba(255,99,132,0.1)",
+              borderColor: "rgba(255,99,132,1)",
+              pointBorderColor: "#fff",
+              pointBackgroundColor: "rgba(255,99,132,1)",
+              data: Array(nAreas-1).fill(client['q16']),
+            }]
+          }
+
+          var myRadarChart = new Chart(ctx, {
+              type: 'radar',
+              data: chartData,
+              options: {
+                title: {
+                  display: false,
+                  text: 'Your Passion Report',
+                },
+                scale: {
+                    angleLines: {
+                        display: false
+                    },
+                    ticks: {
+                        suggestedMin: 0,
+                        suggestedMax: 10
+                    }
+                }
+              }
+          });
+
+      }
+
+      async function start() {
+        // 2. Initialize the JavaScript client library.
+        await gapi.client.init({
+          'apiKey': 'AIzaSyCFUR8GgBqHGGp3rDyhXbXnY-G14tI_UrM',
+          'clientId': '1014599842562-7nh5o8on5lau5p1970lbfr44kqfga559.apps.googleusercontent.com',
+          'scope': 'https://www.googleapis.com/auth/spreadsheets.readonly',
+          'discoveryDocs': ["https://sheets.googleapis.com/$discovery/rest?version=v4"]
+        })
+
+        const spreadsheetId = '1IUmIxekkrg5uE-XXHNZpKUfSue9ntsEoDw9-imypgxU'
+        const getSheet = async sheetName => (
+          await gapi.client.sheets.spreadsheets.values.get({spreadsheetId, range: sheetName})
+        ).result.values
+
+        const entryPassionHealthTest = await getSheet('Passion Health Test')
+        const entryPassionHealthResponse = await getSheet('Passion Health Responses')
+        const entryPassionHealthCategory = await getSheet('Passion Health Categories')
+        const entryPassionHealthCalculated = await getSheet('Calculated Test Values')
+
+        let categories = entryPassionHealthCategory[0]
+        categories.pop()
+
+        // Create client object
+        clients = createClients(entryPassionHealthTest, entryPassionHealthCalculated, nColumns, nNonScoreColumns, uid);
+        client = clients[clients.length]
+        $("#card-title").text(client['name'] + "'s Passion Health™ Report")
+
+        // TODO Display toggle if clients length is > 1
+        console.log(clients)
+
+        // Get report text responses
+        let response = formatPassionResponseDB(entryPassionHealthResponse, nPassionResponseDBColumns, nAreas)
+
+        // Overview blurb text
+        let overallScoreCategory = getScoreCategory(client['score'])
+        let header = $("<h3></h3>").text("Your Passion Health™ Score: " + client['score'].toString() + "/10");
+        let blurb = $("<p></p>").text(response['score'][overallScoreCategory])
+        $("#blurb-dash").append(header, blurb);
+
+        // Create chart
+        createChart('passion-chart', categories, client)
+
+        // Get question text
+        const questions = entryPassionHealthTest[0].slice(2)
+
+        function appendCategoryElements(index) {
+          let header = $("<h3></h3>").text(categories[index-1]);
+          let p_explanation = $("<p id=q"+index+"-explanation></p>")
+          let p_score = $("<strong><p id=q"+index+"-score></p></strong>")
+          let p_main = $("<p id=q"+index+"-main></p>")
+          let p_bonus = $("<p id=q"+index+"-bonus></p>")
+          $("#dashboard").append(header, p_explanation, p_score, p_main, p_bonus);
+        }
+
+        // Inject data into dashboard
+        for (let i = 1; i <= nAreas; i++){
+          appendCategoryElements(i)
+
+          const q = "#q" + i.toString()
+          const qq = "q" + i.toString()
+
+          const category = getScoreCategory(client[qq])
+
+          const bonusHTML = formatBonusText(response[qq][category]['bonus'])
+          const explanationHTML = formatExplanation(response[qq]['explanation'])
+          $(q+"-explanation").html(explanationHTML)
+          $(q+"-score").html(
+            `<strong>For <em>${questions[i != nAreas ? i-1 : i].replace('?', '')}</em> you scored: ${client[qq]}`
+          )
+          $(q+"-bonus").html(bonusHTML)
+          $(q+"-main").text(response[qq][category]['main'])
+        }
+
+        $("#passion-chart").clone().attr('id', 'passion-chart2').appendTo("#dashboard");
+        createChart('passion-chart2', categories, client)
+      }
+
+      gapi.load('client', start);
+    </script>
+
+    <script src="js/extention/choices.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+  </body>
+</html>
